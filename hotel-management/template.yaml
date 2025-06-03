@@ -1,0 +1,22 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Hotel Management System API
+
+Globals:
+  Function:
+    Timeout: 30
+    Runtime: python3.12
+    MemorySize: 128
+
+Resources:
+  UsersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: users.handler
+      Events:
+        UsersAPI:
+          Type: Api
+          Properties:
+            Path: /users
+            Method: ANY
