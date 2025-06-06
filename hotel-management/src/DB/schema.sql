@@ -1,4 +1,4 @@
--- ==============================================================
+-- ============================================================== 
 --                     Hotel Management System
 -- ==============================================================
 
@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
     username VARCHAR(50) UNIQUE NOT NULL,
     email VARCHAR(100) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
-    system_role VARCHAR(20) NOT NULL CHECK (system_role IN ('super_admin', 'user')),
+    user_role VARCHAR(20) NOT NULL CHECK (user_role IN ('staff', 'guest')),  -- Only staff or guest for normal registration
     phone VARCHAR(20),
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     last_login TIMESTAMPTZ,
@@ -23,13 +23,8 @@ CREATE TABLE IF NOT EXISTS staff_positions (
     id SERIAL PRIMARY KEY,
     position_name VARCHAR(50) NOT NULL UNIQUE CHECK (
         position_name IN (
-            'Manager',
-            'Receptionist',
-            'Housekeeping',
-            'Maintenance',
-            'Chef',
-            'Security',
-            'Cleaner'
+            'Manager', 'Receptionist', 'Housekeeping', 'Maintenance',
+            'Chef', 'Security', 'Cleaner'
         )
     ),
     description TEXT,
@@ -56,6 +51,26 @@ CREATE TABLE IF NOT EXISTS guest_profiles (
     date_of_birth DATE NOT NULL,
     address VARCHAR(255) NOT NULL,
     preferences JSONB
+);
+
+-- ===================== SUPER ADMIN ACTION LOG =================
+CREATE TABLE IF NOT EXISTS super_admin_log (
+    id SERIAL PRIMARY KEY,
+    admin_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,  -- Super admin ID
+    action_type VARCHAR(50) NOT NULL CHECK (action_type IN ('promote_to_super_admin', 'demote_to_staff', 'other')),
+    target_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,  -- Target user (staff to be promoted or demoted)
+    action_description TEXT,
+    action_timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ===================== SUPER ADMIN ROLE ASSIGNMENT ====================
+CREATE TABLE IF NOT EXISTS user_role_permissions (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,  -- User being given super admin privileges
+    granted_by INTEGER NOT NULL REFERENCES users(id),  -- Super admin who grants the permission
+    is_super_admin BOOLEAN DEFAULT FALSE,  -- Whether user is granted super admin privileges or not
+    granted_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id)
 );
 
 -- ========================= HOTELS =============================
@@ -122,7 +137,6 @@ CREATE TABLE IF NOT EXISTS discounts (
     valid_to DATE NOT NULL,
     is_active BOOLEAN DEFAULT TRUE
 );
-
 
 -- ======================= BOOKINGS =============================
 CREATE TABLE IF NOT EXISTS bookings (
@@ -203,3 +217,7 @@ CREATE TABLE IF NOT EXISTS checkin_logs (
     checked_in_by INTEGER REFERENCES users(id),
     checked_out_by INTEGER REFERENCES users(id)
 );
+
+
+ALTER TABLE users ADD COLUMN profile_completed BOOLEAN DEFAULT FALSE;
+ALTER TABLE users DROP CONSTRAINT valid_email

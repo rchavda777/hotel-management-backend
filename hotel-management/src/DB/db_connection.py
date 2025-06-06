@@ -9,11 +9,11 @@ def get_db_connection():
     """Establish a connection to the PostgreSQL database."""
     try:
         connection = psycopg2.connect(
-            host=os.getenv("DB_HOST"),
-            database=os.getenv("DB_NAME"),
-            user=os.getenv("DB_USER"),
-            password=os.getenv("DB_PASSWORD"),
-            port=os.getenv("DB_PORT", "5432") ,
+            host=os.environ["POSTGRES_HOST"],
+            database=os.environ["POSTGRES_DB"],
+            user=os.environ["POSTGRES_USER"],
+            password=os.environ["POSTGRES_PASSWORD"],
+            port=os.environ.get("POSTGRES_PORT", "5432"),
             connect_timeout=10
         )
         print("Database connection established successfully.")

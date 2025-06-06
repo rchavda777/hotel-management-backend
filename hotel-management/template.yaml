@@ -9,14 +9,48 @@ Globals:
     MemorySize: 128
 
 Resources:
-  UsersFunction:
+  RegisterUsersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/                 
+      Handler: users.register_user.register_user_handler
+      Environment:
+        Variables:
+          POSTGRES_DB: hotel_management
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: admin123
+          POSTGRES_HOST: host.docker.internal   
+          POSTGRES_PORT: "5432"
+      Events:
+        RegisterAPI:
+          Type: Api
+          Properties:
+            Path: /register
+            Method: post
+
+  LoginUsersFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: src/
-      Handler: users.handler
+      Handler: users.login_user.login_user_handler
+      Environment:
+        Variables:
+          POSTGRES_DB: hotel_management
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: admin123
+          POSTGRES_HOST: host.docker.internal
+          POSTGRES_PORT: "5432"
       Events:
-        UsersAPI:
+        LoginAPI:
           Type: Api
           Properties:
-            Path: /users
-            Method: ANY
+            Path: /login
+            Method: post
+
+
+    Metadata:
+      BuildMethod: python3.12
+      BuildProperties:
+        IncludePaths:
+          - users/
+          - DB/
