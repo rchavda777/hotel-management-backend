@@ -1,7 +1,7 @@
 import bcrypt
-from jose import jwt, JWTError
 import os
 
+from jose import jwt, JWTError, ExpiredSignatureError
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 
@@ -21,24 +21,21 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against a hash."""
     return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
 
-def create_jwt_token(user_id: int, role: str) -> str:
-    """Create a JWT token for the user."""
+def create_jwt_token(user_id, role):
+    expire = datetime.utcnow() + timedelta(hours=1)  # 🔒 Valid for 1 hour
     payload = {
         "user_id": user_id,
         "role": role,
-        "exp": datetime.utcnow() + timedelta(hours=1),  # Token expiration time (1 hour)
+        "exp": expire
     }
     token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
     return token
 
 def decode_jwt_token(token: str):
-    """Decode a JWT token."""
     try:
-        # Decoding the JWT token
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
         return payload
-    except JWTError as e:
-        # Catch errors and return a descriptive message
-        print(f"JWT decode error: {e}")
-        return {"error": "Invalid or expired token"}
-
+    except ExpiredSignatureError:
+        raise Exception("Token has expired")
+    except JWTError:
+        raise Exception("Invalid token")

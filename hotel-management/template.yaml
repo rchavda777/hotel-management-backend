@@ -47,6 +47,25 @@ Resources:
             Path: /login
             Method: post
 
+  CompleteProfileFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: users.complete_profile.complete_profile_handler
+      Environment:
+        Variables:
+          POSTGRES_DB: hotel_management
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: admin123
+          POSTGRES_HOST: host.docker.internal
+          POSTGRES_PORT: "5432"
+      Events:
+        LoginAPI:
+          Type: Api
+          Properties:
+            Path: /complete-profile
+            Method: post
+
 
     Metadata:
       BuildMethod: python3.12
