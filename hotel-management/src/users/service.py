@@ -1,16 +1,24 @@
 import json
 
 from db.db_connection import get_db_connection
+from db.db_common_query import get_by_column, insert_row, upsert_row, get_by_id, update_by_id
 from users.utils import hash_password, verify_password, create_jwt_token
 
 def register_user(data):
     """
     Register a new user and create s their profile (guest or staff).
+    Args:
+        - username: Unique username
+        - email: User's email address
+        - password: User's password
+        - user_role: Role of the user ('guest' or 'staff'). Defaults to 'guest'.
+    Returns:
+        Dictionary with status and user's data.
     """
 
-    username = data["username"]
-    email = data["email"]
-    password = data["password"]
+    username = data.get("username")
+    email = data.get("email")
+    password = data.get("password")
     user_role = data.get("user_role", "guest") # Default to 'guest' if not provided
 
     if not username or not email or not password:
@@ -26,153 +34,143 @@ def register_user(data):
             "message": "Database connection failed"
         } 
 
-    try:
-        hashed_pass = hash_password(password)
+    # Check if username or email already exists
+    existing_by_username = get_by_column("users", "username", username)
+    existing_by_email = get_by_column("users", "email", email)
 
-        with conn.cursor() as cur:
-            # Check if the username or email already exists
-            cur.execute("SELECT id FROM users WHERE username = %s OR email = %s",
-                        (username, email))
-            if cur.fetchone():
-                raise ValueError("Username or email already exists")
-            
-            cur.execute("""
-                INSERT INTO users (username, email, password, user_role)
-                VALUES (%s, %s, %s, %s) RETURNING id, username;
-            """, (username, email, hashed_pass, user_role))
-
-            result = cur.fetchone()
-            conn.commit()
-            return {
-                "id": result[0],
-                "username": result[1],
-                "user_role": result[2],
-                "profile_completed": False,
-                "status": "success"
-            }
-
-    except Exception as e:
-        conn.rollback()
+    if existing_by_username or existing_by_email:
         return {
             "status": "error",
-            "message": str(e)
+            "message": "Username or email already exists"
+        }
+    
+    # Hash password and insert new user into database
+    try:
+        hashed_password = hash_password(password)
+        user_data = {
+            "username": username,
+            "email": email,
+            "password": hashed_password,
+            "user_role": user_role
         }
 
-    finally:
-        conn.close()
+        result = insert_row("users", user_data, returning="id, username, email, user_role, profile_completed")
+
+        if result:
+            return {
+                "status": "success",
+                **result
+            }
+        else:
+            return {
+                "status": "error",
+                "message": "User registration failed"
+            }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"An error occurred: {str(e)}"
+        }
 
 
 def login_user(email: str, password: str):
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id, password, user_role FROM users WHERE email = %s", (email,))
-            user = cur.fetchone()
-            if user is None:
-                raise Exception("User not found")
-            
-            user_id, hashed_password, role = user
-            if not verify_password(password, hashed_password):
-                raise Exception("Invalid password")
-            
-            token = create_jwt_token(user_id, role) 
-            return {"access_token": token, "token_type": "bearer"}
+    """
+    Login user with email and password.
+    On suceesful login, generate and return JWT token.
+    """
+    # Check if user exists
+    user = get_by_column("users", "email", email)
+
+    if not user:
+        raise Exception("User not found")
+    
+    if not verify_password(password, user["password"]):
+        raise Exception("Invalid password")
+
+    token = create_jwt_token(user["id"], user["user_role"])
+    return {"access_token": token, "token_type": "bearer"}
+
 
 def complete_profile(user_id: int, profile_data: dict):
     """
     Complete the user profile based on user role (guest or staff)
+    using reusable db_common_query functions.
     """
-    conn = get_db_connection()
-    if not conn:
-        return {
-            "status": "error",
-            "message": "Database connection failed"
+    # Get user and role
+    user = get_by_id("users", user_id)
+    if not user:
+        return {"status": "error", "message": "User not found"}
+
+    user_role = user.get("user_role")
+
+    #  Validate and upsert profile based on role
+    if user_role == "staff":
+        required_fields = ["first_name", "last_name", "date_of_birth", 
+                           "address", "position_id", "hire_date"]
+        for field in required_fields:
+            if field not in profile_data:
+                return {"status": "error", "message": f"Missing field: {field}"}
+
+        staff_data = {
+            "user_id": user_id,
+            "first_name": profile_data["first_name"],
+            "last_name": profile_data["last_name"],
+            "date_of_birth": profile_data["date_of_birth"],
+            "address": profile_data["address"],
+            "position_id": profile_data["position_id"],
+            "hire_date": profile_data["hire_date"]
         }
 
-    try:
-        with conn.cursor() as cur:
-            # First check if user exists and get their role
-            cur.execute("SELECT user_role FROM users WHERE id = %s", (user_id,))
-            user = cur.fetchone()
-            if not user:
-                raise ValueError("User not found")
-            
-            user_role = user[0]
-            
-            # Complete profile based on user role
-            if user_role == "staff":
-                required_fields = ["first_name", "last_name", "date_of_birth", 
-                                "address", "position_id", "hire_date"]
-                for field in required_fields:
-                    if field not in profile_data:
-                        raise ValueError(f"Missing required field for staff: {field}")
-                
-                cur.execute("""
-                    INSERT INTO staff_profiles (
-                        user_id, first_name, last_name, date_of_birth, 
-                        address, position_id, hire_date
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (user_id) DO UPDATE SET
-                        first_name = EXCLUDED.first_name,
-                        last_name = EXCLUDED.last_name,
-                        date_of_birth = EXCLUDED.date_of_birth,
-                        address = EXCLUDED.address,
-                        position_id = EXCLUDED.position_id,
-                        hire_date = EXCLUDED.hire_date
-                """, (
-                    user_id,
-                    profile_data["first_name"],
-                    profile_data["last_name"],
-                    profile_data["date_of_birth"],
-                    profile_data["address"],
-                    profile_data["position_id"],
-                    profile_data["hire_date"]
-                ))
-                
-            elif user_role == "guest":
-                required_fields = ["first_name", "last_name", "date_of_birth", "address"]
-                for field in required_fields:
-                    if field not in profile_data:
-                        raise ValueError(f"Missing required field for guest: {field}")
-                
-                cur.execute("""
-                    INSERT INTO guest_profiles (
-                        user_id, first_name, last_name, 
-                        date_of_birth, address, preferences
-                    ) VALUES (%s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (user_id) DO UPDATE SET
-                        first_name = EXCLUDED.first_name,
-                        last_name = EXCLUDED.last_name,
-                        date_of_birth = EXCLUDED.date_of_birth,
-                        address = EXCLUDED.address,
-                        preferences = EXCLUDED.preferences
-                """, (
-                    user_id,
-                    profile_data["first_name"],
-                    profile_data["last_name"],
-                    profile_data["date_of_birth"],
-                    profile_data["address"],
-                    json.dumps(profile_data.get("preferences", {}))
-                ))
-            
-            else:
-                raise ValueError("Invalid user role")
-            
-            # Mark profile as completed
-            cur.execute("""
-                UPDATE users SET profile_completed = TRUE WHERE id = %s
-            """, (user_id,))
-            
-            conn.commit()
-            return {
-                "status": "success",
-                "message": f"{user_role} profile completed successfully"
-            }
-            
-    except Exception as e:
-        conn.rollback()
-        return {
-            "status": "error",
-            "message": str(e)
+        upsert_row(
+            table="staff_profiles",
+            data=staff_data,
+            conflict_column="user_id",
+            update_columns=[
+                "first_name", "last_name", "date_of_birth",
+                "address", "position_id", "hire_date"
+            ],
+            returning="user_id"
+        )
+
+    elif user_role == "guest":
+        required_fields = ["first_name", "last_name", "date_of_birth", "address"]
+        for field in required_fields:
+            if field not in profile_data:
+                return {"status": "error", "message": f"Missing field: {field}"}
+
+        guest_data = {
+            "user_id": user_id,
+            "first_name": profile_data["first_name"],
+            "last_name": profile_data["last_name"],
+            "date_of_birth": profile_data["date_of_birth"],
+            "address": profile_data["address"],
+            "preferences": json.dumps(profile_data.get("preferences", {}))
         }
-    finally:
-        conn.close()
+
+        upsert_row(
+            table="guest_profiles",
+            data=guest_data,
+            conflict_column="user_id",
+            update_columns=[
+                "first_name", "last_name", "date_of_birth",
+                "address", "preferences"
+            ],
+            returning="user_id"
+        )
+
+    else:
+        return {"status": "error", "message": "Invalid user role"}
+
+    # Mark profile as complete using update_by_id
+    update_by_id(
+        table="users",
+        row_id=user_id,
+        data={"profile_completed": True},
+        returning=None
+    )
+
+    return {
+        "status": "success",
+        "message": f"{user_role} profile completed successfully"
+    }
+

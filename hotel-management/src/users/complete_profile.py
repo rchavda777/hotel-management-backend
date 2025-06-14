@@ -21,7 +21,7 @@ def complete_profile_handler(event, context):
     }
 
     try:
-        # 🔐 Strict authentication check
+        # Strict authentication check
         try:
             user = get_authenticated_user(event)
             if not user or not user.get("user_id"):
@@ -43,7 +43,7 @@ def complete_profile_handler(event, context):
                 "headers": headers
             }
 
-        # ✅ Validate request body
+        #  Validate request body
         try:
             body = json.loads(event.get("body", "{}"))
         except json.JSONDecodeError:
@@ -56,7 +56,7 @@ def complete_profile_handler(event, context):
                 "headers": headers
             }
 
-        # 🚫 Prevent user_id override
+        #  Prevent user_id override
         if "user_id" in body:
             return {
                 "statusCode": 403,
@@ -67,7 +67,7 @@ def complete_profile_handler(event, context):
                 "headers": headers
             }
 
-        # 🛡️ Process profile completion
+        #  Process profile completion
         response = complete_profile(user["user_id"], body)
 
         # Return appropriate status code based on service response
@@ -88,4 +88,4 @@ def complete_profile_handler(event, context):
                 "message": "Internal server error"
             }),
             "headers": headers
-        }
+        }  

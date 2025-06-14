@@ -22,7 +22,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
 
 def create_jwt_token(user_id, role):
-    expire = datetime.utcnow() + timedelta(hours=1)  # 🔒 Valid for 1 hour
+    expire = datetime.utcnow() + timedelta(hours=1)  
     payload = {
         "user_id": user_id,
         "role": role,

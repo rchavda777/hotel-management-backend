@@ -1,5 +1,7 @@
 import os
 import psycopg2
+
+from psycopg2.extras import RealDictCursor
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -14,7 +16,8 @@ def get_db_connection():
             user=os.environ["POSTGRES_USER"],
             password=os.environ["POSTGRES_PASSWORD"],
             port=os.environ.get("POSTGRES_PORT", "5432"),
-            connect_timeout=10
+            connect_timeout=10,
+            cursor_factory=RealDictCursor
         )
         print("Database connection established successfully.")
         return connection
